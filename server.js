@@ -13,8 +13,6 @@ let waitingUser = null;
 
 io.on("connection", (socket) => {
 
-  console.log("User:", socket.id);
-
   io.emit("online", io.engine.clientsCount);
 
   socket.on("find", () => {
@@ -27,15 +25,8 @@ io.on("connection", (socket) => {
       socket.partner = partner.id;
       partner.partner = socket.id;
 
-      socket.emit("matched", {
-        id: partner.id,
-        initiator: true
-      });
-
-      partner.emit("matched", {
-        id: socket.id,
-        initiator: false
-      });
+      socket.emit("matched", { initiator: true });
+      partner.emit("matched", { initiator: false });
 
     } else {
       waitingUser = socket;
@@ -50,7 +41,6 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-
     if (waitingUser === socket) waitingUser = null;
 
     if (socket.partner) {
@@ -62,6 +52,4 @@ io.on("connection", (socket) => {
 
 });
 
-server.listen(3000, () => {
-  console.log("Server running 🚀");
-});
+server.listen(3000, () => console.log("Server running 🚀"));
