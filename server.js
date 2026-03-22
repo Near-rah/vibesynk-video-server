@@ -6,27 +6,33 @@ const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
-  cors: {
-    origin: "*"
-  }
+  cors: { origin: "*" }
 });
 
 let waitingUser = null;
 
 io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+  console.log("User:", socket.id);
 
   socket.on("find-partner", () => {
     if (waitingUser) {
       let partner = waitingUser;
-
       waitingUser = null;
 
       socket.partner = partner.id;
       partner.partner = socket.id;
 
-      socket.emit("partner-found", partner.id);
-      partner.emit("partner-found", socket.id);
+      // ✅ FIXED (initiator logic)
+      socket.emit("partner-found", {
+        id: partner.id,
+        initiator: true
+      });
+
+      partner.emit("partner-found", {
+        id: socket.id,
+        initiator: false
+      });
+
     } else {
       waitingUser = socket;
     }
@@ -47,17 +53,11 @@ io.on("connection", (socket) => {
     if (waitingUser === socket) {
       waitingUser = null;
     }
-
-    console.log("User disconnected:", socket.id);
   });
 });
 
 app.get("/", (req, res) => {
-  res.send("VibeSynk Server Running");
+  res.send("Server Running");
 });
 
-const PORT = process.env.PORT || 3000;
-
-server.listen(PORT, () => {
-  console.log("Server running on port", PORT);
-});
+server.listen(process.env.PORT || 3000);
