@@ -12,17 +12,24 @@ const io = new Server(server, {
 let waitingUser = null;
 
 io.on("connection", (socket) => {
-  console.log("User:", socket.id);
 
+  console.log("User connected:", socket.id);
+
+  // ✅ SEND ONLINE COUNT
+  io.emit("online-count", io.engine.clientsCount);
+
+  // 🔍 FIND PARTNER
   socket.on("find-partner", () => {
-    if (waitingUser) {
+
+    if (waitingUser && waitingUser.id !== socket.id) {
+
       let partner = waitingUser;
       waitingUser = null;
 
       socket.partner = partner.id;
       partner.partner = socket.id;
 
-      // ✅ FIXED (initiator logic)
+      // ✅ ONE INITIATOR, ONE RECEIVER
       socket.emit("partner-found", {
         id: partner.id,
         initiator: true
@@ -36,8 +43,10 @@ io.on("connection", (socket) => {
     } else {
       waitingUser = socket;
     }
+
   });
 
+  // 🔁 SIGNAL EXCHANGE
   socket.on("signal", (data) => {
     io.to(data.to).emit("signal", {
       from: socket.id,
@@ -45,7 +54,9 @@ io.on("connection", (socket) => {
     });
   });
 
+  // ❌ DISCONNECT
   socket.on("disconnect", () => {
+
     if (socket.partner) {
       io.to(socket.partner).emit("partner-disconnected");
     }
@@ -53,11 +64,19 @@ io.on("connection", (socket) => {
     if (waitingUser === socket) {
       waitingUser = null;
     }
+
+    // ✅ UPDATE ONLINE COUNT
+    io.emit("online-count", io.engine.clientsCount);
+
+    console.log("User disconnected:", socket.id);
   });
+
 });
 
 app.get("/", (req, res) => {
-  res.send("Server Running");
+  res.send("VibeSynk Server Running");
 });
 
-server.listen(process.env.PORT || 3000);
+server.listen(process.env.PORT || 3000, () => {
+  console.log("Server started");
+});
