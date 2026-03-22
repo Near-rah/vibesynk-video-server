@@ -1,82 +1,139 @@
 const express = require("express");
 const http = require("http");
+const fs = require("fs");
 const { Server } = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
-  cors: { origin: "*" }
+    cors: { origin: "*" },
+    transports: ["polling","websocket"]
 });
 
-let waitingUser = null;
+/* FILE */
+const BAN_FILE = "banned.json";
 
-io.on("connection", (socket) => {
+function loadBans(){
+    try { return JSON.parse(fs.readFileSync(BAN_FILE)); }
+    catch { return {}; }
+}
 
-  console.log("User connected:", socket.id);
+function saveBans(){
+    fs.writeFileSync(BAN_FILE, JSON.stringify(bannedUsers,null,2));
+}
 
-  // ✅ SEND ONLINE COUNT
-  io.emit("online-count", io.engine.clientsCount);
+/* STATE */
+let users = {};
+let waitingQueue = [];
+let reportCounts = {};
+let bannedUsers = loadBans();
+let sessionReported = {};
 
-  // 🔍 FIND PARTNER
-  socket.on("find-partner", () => {
+/* HELPERS */
+function generateUID(){
+    return "U_" + Math.random().toString(36).substr(2,9);
+}
 
-    if (waitingUser && waitingUser.id !== socket.id) {
+function removeFromQueue(socket){
+    waitingQueue = waitingQueue.filter(u => u.id !== socket.id);
+}
 
-      let partner = waitingUser;
-      waitingUser = null;
+/* MATCH */
+function tryMatch(){
+    while(waitingQueue.length >= 2){
 
-      socket.partner = partner.id;
-      partner.partner = socket.id;
+        let u1 = waitingQueue.shift();
+        let u2 = waitingQueue.shift();
 
-      // ✅ ONE INITIATOR, ONE RECEIVER
-      socket.emit("partner-found", {
-        id: partner.id,
-        initiator: true
-      });
+        if(!u1 || !u2) return;
 
-      partner.emit("partner-found", {
-        id: socket.id,
-        initiator: false
-      });
+        u1.partner = u2;
+        u2.partner = u1;
 
-    } else {
-      waitingUser = socket;
+        sessionReported[u1.uid] = false;
+        sessionReported[u2.uid] = false;
+
+        u1.emit("connected");
+        u2.emit("connected");
+    }
+}
+
+/* SOCKET */
+io.on("connection",(socket)=>{
+
+    socket.uid = generateUID();
+    socket.partner = null;
+
+    if(bannedUsers[socket.uid]){
+        socket.emit("banned");
+        return;
     }
 
-  });
+    users[socket.uid] = socket;
+    io.emit("onlineCount", Object.keys(users).length);
 
-  // 🔁 SIGNAL EXCHANGE
-  socket.on("signal", (data) => {
-    io.to(data.to).emit("signal", {
-      from: socket.id,
-      data: data.data
+    /* JOIN */
+    socket.on("join",()=>{
+        if(socket.partner) return;
+        removeFromQueue(socket);
+        waitingQueue.push(socket);
+        socket.emit("waiting");
+        tryMatch();
     });
-  });
 
-  // ❌ DISCONNECT
-  socket.on("disconnect", () => {
+    /* MESSAGE */
+    socket.on("message",(msg)=>{
+        if(socket.partner){
+            socket.partner.emit("message", msg);
+        }
+    });
 
-    if (socket.partner) {
-      io.to(socket.partner).emit("partner-disconnected");
-    }
+    /* TYPING */
+    socket.on("typing",()=>{
+        if(socket.partner){
+            socket.partner.emit("typing");
+        }
+    });
 
-    if (waitingUser === socket) {
-      waitingUser = null;
-    }
+    /* NEXT */
+    socket.on("next",()=>{
+        if(socket.partner){
+            socket.partner.emit("strangerLeft");
+            socket.partner.partner = null;
+        }
 
-    // ✅ UPDATE ONLINE COUNT
-    io.emit("online-count", io.engine.clientsCount);
+        socket.partner = null;
+        removeFromQueue(socket);
 
-    console.log("User disconnected:", socket.id);
-  });
+        waitingQueue.push(socket);
+        socket.emit("waiting");
+
+        tryMatch();
+    });
+
+    /* ===== WEBRTC SIGNAL ===== */
+    socket.on("signal",(data)=>{
+        if(socket.partner){
+            socket.partner.emit("signal", data);
+        }
+    });
+
+    /* DISCONNECT */
+    socket.on("disconnect",()=>{
+
+        delete users[socket.uid];
+        removeFromQueue(socket);
+
+        io.emit("onlineCount", Object.keys(users).length);
+
+        if(socket.partner){
+            socket.partner.emit("strangerLeft");
+            socket.partner.partner = null;
+        }
+    });
 
 });
 
-app.get("/", (req, res) => {
-  res.send("VibeSynk Server Running");
-});
-
-server.listen(process.env.PORT || 3000, () => {
-  console.log("Server started");
-});
+/* START */
+server.listen(3000,()=>console.log("Server running 🚀"));
