@@ -9,90 +9,26 @@ const io = new Server(server, {
   cors: { origin: "*" }
 });
 
-/* QUEUE SYSTEM */
+/* QUEUE */
 let queue = [];
 
-io.on("connection", (socket) => {
+/* CLEAN QUEUE */
+function cleanQueue() {
+  queue = queue.filter(s => s && s.connected && !s.partner);
+}
 
-  console.log("User:", socket.id);
-
-  io.emit("online", io.engine.clientsCount);
-
-  /* FIND MATCH */
-  socket.on("find", () => {
-
-    // remove if already in queue
-    queue = queue.filter(s => s.id !== socket.id);
-
-    if (queue.length > 0) {
-
-      let partner = queue.shift();
-
-      socket.partner = partner.id;
-      partner.partner = socket.id;
-
-      socket.emit("matched", { initiator: true });
-      partner.emit("matched", { initiator: false });
-
-      console.log("MATCH:", socket.id, partner.id);
-
-    } else {
-      queue.push(socket);
-    }
-
-  });
-
-  /* SIGNAL */
-  socket.on("signal", (data) => {
-    if (socket.partner) {
-      io.to(socket.partner).emit("signal", data);
-    }
-  });
-
-  /* NEXT */
-  socket.on("next", () => {
-
-    if (socket.partner) {
-      io.to(socket.partner).emit("partner-left");
-
-      let partnerSocket = io.sockets.sockets.get(socket.partner);
-      if (partnerSocket) partnerSocket.partner = null;
-    }
-
-    socket.partner = null;
-
-    // re-add to queue
-    queue.push(socket);
-
-    // try match immediately
-    tryMatch();
-  });
-
-  /* DISCONNECT */
-  socket.on("disconnect", () => {
-
-    // remove from queue
-    queue = queue.filter(s => s.id !== socket.id);
-
-    if (socket.partner) {
-      io.to(socket.partner).emit("partner-left");
-
-      let partnerSocket = io.sockets.sockets.get(socket.partner);
-      if (partnerSocket) partnerSocket.partner = null;
-    }
-
-    io.emit("online", io.engine.clientsCount);
-  });
-
-});
-
-/* MATCH FUNCTION */
+/* MATCH USERS */
 function tryMatch() {
+
+  cleanQueue();
 
   while (queue.length >= 2) {
 
     let user1 = queue.shift();
     let user2 = queue.shift();
+
+    if (!user1 || !user2) continue;
+    if (!user1.connected || !user2.connected) continue;
 
     user1.partner = user2.id;
     user2.partner = user1.id;
@@ -104,7 +40,93 @@ function tryMatch() {
   }
 }
 
-app.get("/", (req,res)=>res.send("Server Running"));
+io.on("connection", (socket) => {
+
+  console.log("User:", socket.id);
+
+  io.emit("online", io.engine.clientsCount);
+
+  /* FIND */
+  socket.on("find", () => {
+
+    cleanQueue();
+
+    // prevent duplicate entry
+    if (!queue.find(s => s.id === socket.id)) {
+      queue.push(socket);
+    }
+
+    tryMatch();
+  });
+
+  /* SIGNAL */
+  socket.on("signal", (data) => {
+
+    if (!socket.partner) return;
+
+    let partnerSocket = io.sockets.sockets.get(socket.partner);
+
+    if (partnerSocket) {
+      partnerSocket.emit("signal", data);
+    }
+  });
+
+  /* NEXT */
+  socket.on("next", () => {
+
+    if (socket.partner) {
+
+      let partnerSocket = io.sockets.sockets.get(socket.partner);
+
+      if (partnerSocket) {
+        partnerSocket.partner = null;
+        partnerSocket.emit("partner-left");
+
+        // requeue partner safely
+        if (!queue.find(s => s.id === partnerSocket.id)) {
+          queue.push(partnerSocket);
+        }
+      }
+    }
+
+    socket.partner = null;
+
+    // remove self from queue first
+    queue = queue.filter(s => s.id !== socket.id);
+
+    // re-add self
+    queue.push(socket);
+
+    tryMatch();
+  });
+
+  /* DISCONNECT */
+  socket.on("disconnect", () => {
+
+    // remove from queue
+    queue = queue.filter(s => s.id !== socket.id);
+
+    if (socket.partner) {
+
+      let partnerSocket = io.sockets.sockets.get(socket.partner);
+
+      if (partnerSocket) {
+        partnerSocket.partner = null;
+        partnerSocket.emit("partner-left");
+
+        // requeue partner
+        if (!queue.find(s => s.id === partnerSocket.id)) {
+          queue.push(partnerSocket);
+        }
+      }
+    }
+
+    io.emit("online", io.engine.clientsCount);
+  });
+
+});
+
+app.get("/", (req,res)=>res.send("Server Running 🚀"));
 
 server.listen(process.env.PORT || 3000, () => {
   console.log("Server running 🚀");
