@@ -9,50 +9,47 @@ const io = new Server(server, {
   cors: { origin: "*" }
 });
 
-/* QUEUE */
 let queue = [];
 
 /* CLEAN QUEUE */
-function cleanQueue() {
+function cleanQueue(){
   queue = queue.filter(s => s && s.connected && !s.partner);
 }
 
-/* MATCH USERS */
-function tryMatch() {
+/* MATCH */
+function tryMatch(){
 
   cleanQueue();
 
-  while (queue.length >= 2) {
+  while(queue.length >= 2){
 
-    let user1 = queue.shift();
-    let user2 = queue.shift();
+    let a = queue.shift();
+    let b = queue.shift();
 
-    if (!user1 || !user2) continue;
-    if (!user1.connected || !user2.connected) continue;
+    if(!a || !b) continue;
 
-    user1.partner = user2.id;
-    user2.partner = user1.id;
+    a.partner = b.id;
+    b.partner = a.id;
 
-    user1.emit("matched", { initiator: true });
-    user2.emit("matched", { initiator: false });
+    a.emit("matched",{initiator:true});
+    b.emit("matched",{initiator:false});
 
-    console.log("MATCH:", user1.id, user2.id);
+    console.log("MATCH:",a.id,b.id);
   }
 }
 
-io.on("connection", (socket) => {
+io.on("connection",(socket)=>{
 
-  console.log("User:", socket.id);
+  console.log("User:",socket.id);
 
-  io.emit("online", io.engine.clientsCount);
+  io.emit("online",io.engine.clientsCount);
 
   /* FIND */
-  socket.on("find", () => {
+  socket.on("find",()=>{
 
     cleanQueue();
 
-    // prevent duplicate entry
-    if (!queue.find(s => s.id === socket.id)) {
+    if(!queue.find(s=>s.id===socket.id)){
       queue.push(socket);
     }
 
@@ -60,74 +57,68 @@ io.on("connection", (socket) => {
   });
 
   /* SIGNAL */
-  socket.on("signal", (data) => {
+  socket.on("signal",(data)=>{
 
-    if (!socket.partner) return;
+    if(!socket.partner) return;
 
-    let partnerSocket = io.sockets.sockets.get(socket.partner);
+    let p = io.sockets.sockets.get(socket.partner);
 
-    if (partnerSocket) {
-      partnerSocket.emit("signal", data);
+    if(p){
+      p.emit("signal",data);
     }
   });
 
   /* NEXT */
-  socket.on("next", () => {
+  socket.on("next",()=>{
 
-    if (socket.partner) {
+    if(socket.partner){
 
-      let partnerSocket = io.sockets.sockets.get(socket.partner);
+      let p = io.sockets.sockets.get(socket.partner);
 
-      if (partnerSocket) {
-        partnerSocket.partner = null;
-        partnerSocket.emit("partner-left");
+      if(p){
+        p.partner = null;
+        p.emit("partner-left");
 
-        // requeue partner safely
-        if (!queue.find(s => s.id === partnerSocket.id)) {
-          queue.push(partnerSocket);
+        if(!queue.find(s=>s.id===p.id)){
+          queue.push(p);
         }
       }
     }
 
     socket.partner = null;
 
-    // remove self from queue first
-    queue = queue.filter(s => s.id !== socket.id);
-
-    // re-add self
+    queue = queue.filter(s=>s.id!==socket.id);
     queue.push(socket);
 
     tryMatch();
   });
 
   /* DISCONNECT */
-  socket.on("disconnect", () => {
+  socket.on("disconnect",()=>{
 
-    // remove from queue
-    queue = queue.filter(s => s.id !== socket.id);
+    queue = queue.filter(s=>s.id!==socket.id);
 
-    if (socket.partner) {
+    if(socket.partner){
 
-      let partnerSocket = io.sockets.sockets.get(socket.partner);
+      let p = io.sockets.sockets.get(socket.partner);
 
-      if (partnerSocket) {
-        partnerSocket.partner = null;
-        partnerSocket.emit("partner-left");
+      if(p){
+        p.partner = null;
+        p.emit("partner-left");
 
-        // requeue partner
-        if (!queue.find(s => s.id === partnerSocket.id)) {
-          queue.push(partnerSocket);
+        if(!queue.find(s=>s.id===p.id)){
+          queue.push(p);
         }
       }
     }
 
-    io.emit("online", io.engine.clientsCount);
+    io.emit("online",io.engine.clientsCount);
   });
 
 });
 
-app.get("/", (req,res)=>res.send("Server Running 🚀"));
+app.get("/",(req,res)=>res.send("Server Running 🚀"));
 
-server.listen(process.env.PORT || 3000, () => {
+server.listen(process.env.PORT || 3000,()=>{
   console.log("Server running 🚀");
 });
