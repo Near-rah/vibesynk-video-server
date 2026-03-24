@@ -11,12 +11,10 @@ const io = new Server(server, {
 
 let queue = [];
 
-/* CLEAN QUEUE */
 function cleanQueue(){
   queue = queue.filter(s => s && s.connected && !s.partner);
 }
 
-/* MATCH */
 function tryMatch(){
 
   cleanQueue();
@@ -40,11 +38,8 @@ function tryMatch(){
 
 io.on("connection",(socket)=>{
 
-  console.log("User:",socket.id);
-
   io.emit("online",io.engine.clientsCount);
 
-  /* FIND */
   socket.on("find",()=>{
 
     cleanQueue();
@@ -56,7 +51,6 @@ io.on("connection",(socket)=>{
     tryMatch();
   });
 
-  /* SIGNAL */
   socket.on("signal",(data)=>{
 
     if(!socket.partner) return;
@@ -68,7 +62,6 @@ io.on("connection",(socket)=>{
     }
   });
 
-  /* NEXT */
   socket.on("next",()=>{
 
     if(socket.partner){
@@ -93,7 +86,6 @@ io.on("connection",(socket)=>{
     tryMatch();
   });
 
-  /* DISCONNECT */
   socket.on("disconnect",()=>{
 
     queue = queue.filter(s=>s.id!==socket.id);
@@ -117,7 +109,7 @@ io.on("connection",(socket)=>{
 
 });
 
-app.get("/",(req,res)=>res.send("Server Running 🚀"));
+app.get("/",(req,res)=>res.send("Server Running"));
 
 server.listen(process.env.PORT || 3000,()=>{
   console.log("Server running 🚀");
