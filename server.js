@@ -70,9 +70,7 @@ io.on("connection", (socket) => {
       if (partner) {
         partner.partner = null;
         partner.emit("partner-left");
-        if (!queue.some(s => s.id === partner.id) && partner.connected) {
-          queue.push(partner);
-        }
+        if (!queue.some(s => s.id === partner.id) && partner.connected) queue.push(partner);
       }
     }
     io.emit("online", io.engine.clientsCount);
