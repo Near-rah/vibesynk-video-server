@@ -25,7 +25,7 @@ function cleanQueue() {
 
 function tryMatch() {
     cleanQueue();
-    shuffle(queue);                    // ← This removes any device priority
+    shuffle(queue);
     while (queue.length >= 2) {
         let a = queue.shift();
         let b = queue.shift();
@@ -56,9 +56,7 @@ io.on("connection", (socket) => {
     socket.on("signal", (data) => {
         if (!socket.partner) return;
         const partner = io.sockets.sockets.get(socket.partner);
-        if (partner && partner.connected) {
-            partner.emit("signal", data);
-        }
+        if (partner && partner.connected) partner.emit("signal", data);
     });
 
     socket.on("next", () => {
@@ -67,9 +65,7 @@ io.on("connection", (socket) => {
             if (partner) {
                 partner.partner = null;
                 partner.emit("partner-left");
-                if (!queue.some(s => s.id === partner.id) && partner.connected) {
-                    queue.push(partner);
-                }
+                if (!queue.some(s => s.id === partner.id) && partner.connected) queue.push(partner);
             }
         }
         socket.partner = null;
@@ -81,15 +77,12 @@ io.on("connection", (socket) => {
     socket.on("disconnect", () => {
         console.log("❌ Disconnected:", socket.id);
         queue = queue.filter(s => s.id !== socket.id);
-
         if (socket.partner) {
             const partner = io.sockets.sockets.get(socket.partner);
             if (partner) {
                 partner.partner = null;
                 partner.emit("partner-left");
-                if (!queue.some(s => s.id === partner.id) && partner.connected) {
-                    queue.push(partner);
-                }
+                if (!queue.some(s => s.id === partner.id) && partner.connected) queue.push(partner);
             }
         }
         io.emit("online", io.engine.clientsCount);
