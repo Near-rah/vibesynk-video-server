@@ -6,7 +6,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { 
     cors: { origin: "*" },
-    pingTimeout: 25000,
+    pingTimeout: 30000,
     pingInterval: 10000
 });
 
